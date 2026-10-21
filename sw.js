@@ -1,6 +1,6 @@
 /* DANSHA Learning — service worker : l'app fonctionne entièrement hors ligne.
    Changez VERSION à chaque mise à jour importante pour forcer le renouvellement du cache. */
-const VERSION = "dansha-v2";
+const VERSION = "dansha-v3";
 const SHELL = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icon.svg", "./icon-192.png", "./icon-512.png",
