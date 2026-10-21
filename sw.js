@@ -1,6 +1,6 @@
 /* DANSHA Learning — service worker : l'app fonctionne entièrement hors ligne.
    Changez VERSION à chaque mise à jour importante pour forcer le renouvellement du cache. */
-const VERSION = "dansha-v1";
+const VERSION = "dansha-v2";
 const SHELL = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icon.svg", "./icon-192.png", "./icon-512.png",
@@ -8,7 +8,7 @@ const SHELL = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u=>new Request(u,{cache:"reload"})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {

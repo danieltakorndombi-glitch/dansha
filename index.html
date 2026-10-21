@@ -188,7 +188,7 @@ body:after{bottom:-26vmax;right:-22vmax;background:radial-gradient(circle,#A9A6F
 #splash.out i{animation:scatter .9s ease-out forwards}
 @keyframes logoIn{from{opacity:0;transform:scale(.4) rotate(-12deg)}to{opacity:1;transform:none}}
 @keyframes scatter{0%{opacity:1;transform:rotate(var(--a)) translateX(40px)}100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scale(.3)}}
-html{background:var(--bg);min-height:100dvh}body{position:fixed;inset:0;height:auto;min-height:100dvh}
+html{background:var(--bg);min-height:100dvh}body{position:fixed;inset:0;height:auto;min-height:100dvh}html[style*="--fh"],html[style*="--fh"] body{height:var(--fh)}html[style*="--fh"] body{bottom:auto;transform:translateZ(0)}html[style*="--fh"] .tabs{bottom:max(22px,calc(env(safe-area-inset-bottom,0px) - 10px))}.sw{flex-wrap:wrap}
 .tabs{bottom:max(8px,calc(env(safe-area-inset-bottom,0px) - 10px))}
 #emb{position:fixed;inset:0;z-index:0;display:none;background-size:cover}#emb:after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,.5))}
 #main{position:relative;z-index:1}#main.hasbg h1,#main.hasbg>.sub{color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.4)}#main.hasbg .em2{background:var(--glass);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
@@ -269,12 +269,16 @@ const HAPTICS={
   // logo scatter: rapid little "touk touk touk" pulses
   scatter:[9,48,11,44,8,40,10,36,7,32,6,28,5]
 };
+function fit(){try{if(!(navigator.standalone||matchMedia("(display-mode: standalone)").matches))return;const por=innerHeight>=innerWidth,sh=por?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height),r=document.documentElement.style;if(sh>innerHeight+6&&innerHeight>sh*.8)r.setProperty("--fh",sh+"px");else r.removeProperty("--fh")}catch(e){}}
+addEventListener("resize",fit);addEventListener("orientationchange",()=>setTimeout(fit,300));fit();
+const IOSH=(()=>{try{const l=document.createElement("label");l.setAttribute("aria-hidden","true");l.style.cssText="position:fixed;left:-60px;top:-60px;width:44px;height:44px;opacity:.01;pointer-events:none";const i=document.createElement("input");i.type="checkbox";i.setAttribute("switch","");l.appendChild(i);(document.body||document.documentElement).appendChild(l);return l}catch(e){return null}})();
+if(!CAP.vib&&IOSH)CAP.vib=true;
 const hap=p=>{
-  if(!CAP.vib)return;
   try{
     const pat=typeof p==="string"?(HAPTICS[p]||HAPTICS.tick):p;
-    navigator.vibrate(0); // cancel any ongoing
-    navigator.vibrate(pat);
+    if("vibrate" in navigator){navigator.vibrate(0);navigator.vibrate(pat);return}
+    if(!IOSH)return;
+    let t=0;(Array.isArray(pat)?pat:[pat]).forEach((d,i)=>{if(i%2===0){t?setTimeout(()=>IOSH.click(),t):IOSH.click()}t+=d});
   }catch(e){}
 };
 function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),3500)}
@@ -282,7 +286,7 @@ function confirmBox(t,m,y,n){return new Promise(r=>{const d=$("#modal");d.innerH
 /* ---- Audio: speech synthesis ---- */
 let voice=null;const pickVoice=()=>{if(!CAP.tts)return;const v=speechSynthesis.getVoices();voice=v.find(x=>x.name===S.vname)||v.find(x=>/^en[-_]US/i.test(x.lang)&&x.localService)||v.find(x=>/^en/i.test(x.lang))||null};
 if(CAP.tts){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
-function speak(t){if(!CAP.tts)return toast("Synthèse vocale indisponible sur cet appareil.");try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang="en-US";if(voice)u.voice=voice;u.rate=S.rate;u.pitch=S.pitch||1;document.querySelectorAll("[data-pz]").forEach(x=>x.textContent="Pause");speechSynthesis.speak(u)}catch(e){toast("Lecture impossible.")}}
+function speak(t,q){if(!CAP.tts){toast("Synthèse vocale indisponible sur cet appareil.");return Promise.resolve()}return new Promise(res=>{try{if(speechSynthesis.paused)speechSynthesis.resume();if(!q)speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang="en-US";if(voice)u.voice=voice;u.rate=S.rate;u.pitch=S.pitch||1;let d=0;const fin=()=>{if(!d){d=1;clearTimeout(tm);res()}},tm=setTimeout(fin,Math.max(3000,t.length*120/(S.rate||1))+1500);u.onend=fin;u.onerror=fin;document.querySelectorAll("[data-pz]").forEach(x=>x.textContent="Pause");speechSynthesis.speak(u)}catch(e){toast("Lecture impossible.");res()}})}
 const speedBar=()=>`<div class="speed glass" role="group" aria-label="Vitesse de lecture">${[.75,1,1.25,1.5].map(r=>`<button data-r="${r}" class="${S.rate===r?"on":""}">${r}×</button>`).join("")}<button data-pz aria-label="Pause ou reprise de la lecture">Pause</button></div>`;
 function bindSpeed(root,last){root.querySelectorAll("[data-pz]").forEach(b=>b.onclick=()=>{if(!CAP.tts)return;if(speechSynthesis.paused){speechSynthesis.resume();b.textContent="Pause"}else if(speechSynthesis.speaking){speechSynthesis.pause();b.textContent="Reprendre"}else if(last())speak(last())});root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{S.rate=+b.dataset.r;save();root.querySelectorAll("[data-r]").forEach(x=>x.classList.toggle("on",x===b));if(last())speak(last())})}
 /* ---- Microphone: real permission flow + Web Speech recognition ---- */
@@ -443,7 +447,7 @@ function drawMe(m){
   +sec("Profil",`<div class="row" style="padding:0 0 12px;border:0"><div class="av" id="av"></div><input class="fld" id="pn" maxlength="30" placeholder="Prénom" aria-label="Prénom" autocomplete="given-name" style="margin:0"></div><textarea class="fld" id="pd" maxlength="120" rows="2" placeholder="Une courte description" aria-label="Description" style="padding:10px 14px;height:auto"></textarea><div class="sub" id="pc" style="text-align:right"></div><div class="cap"><button class="btn glassb" id="ph" style="flex:1">Ajouter une photo</button><button class="btn ghost" id="phx" style="flex:0 0 auto">Retirer</button></div><button class="btn glassb" id="avb" style="margin-bottom:8px">Créer un avatar</button><div class="sub">${esc(S.level||"Niveau non choisi")}${L?" ("+L+", indicatif)":""} · ${S.xp} XP · série ${S.streak} · ${Math.min(S.n,TOTAL)}/${TOTAL} leçons</div>`)
   +sec("Apparence",hs("sgTheme"))+sec("Objectif quotidien",hs("sgGoal"))
   +sec("Audio et voix",`<span class="sub">Vitesse</span>${hs("sgRate")}${vs.length?`<label class="sub" for="vn">Voix disponibles sur cet appareil</label><select class="fld" id="vn"><option value="">Automatique</option>${vs.map(v=>`<option ${v.name===S.vname?"selected":""} value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select>`:""}<label class="sub" for="vp">Hauteur : grave ← → aiguë</label><input type="range" id="vp" min=".5" max="1.5" step=".1" value="${S.pitch||1}"><div class="cap" style="margin-top:10px"><button class="btn glassb" id="vt" style="flex:1">${ic("spk",20)}Tester la voix</button></div><button class="row" id="sl" style="padding-left:0"><div style="flex:1"><b>Mode silencieux : ${S.silent?"activé":"désactivé"}</b><span class="sub">Aucun son automatique ; la lecture manuelle reste possible</span></div></button>`)
-  +sec("Fond de conversation avec Emma",`<div class="sw">${GR.map((g,i)=>`<button data-g="${i}" aria-label="Fond ${i+1}" style="background:${g}"></button>`).join("")}</div><div class="cap"><button class="btn glassb" id="bp" style="flex:1">Ma photo</button><button class="btn ghost" id="bx" style="flex:0 0 auto">Aucun</button></div><div class="sub">La photo reste sur cet appareil.</div>`)
+  +sec("Fond de conversation avec Emma",`<div class="sw">${GR.map((g,i)=>`<button data-g="${i}" aria-label="Fond ${i+1}" style="background:${g}"></button>`).join("")}${SC.map((x,i)=>`<button data-s="${i}" aria-label="${x[0]}" style="background:url(${scUrl(i)}) center/cover"></button>`).join("")}</div><div class="cap"><button class="btn glassb" id="bp" style="flex:1">Ma photo</button><button class="btn ghost" id="bx" style="flex:0 0 auto">Aucun</button></div><div class="sub">La photo reste sur cet appareil.</div>`)
   +sec("Cerveau d’Emma",`<div id="sgAi" style="margin:6px 0 12px"></div><div id="aiBox" ${S.aiOn?"":"hidden"}><label class="sub" for="ak">Clé API Anthropic</label><input class="fld" id="ak" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…"><label class="sub" for="am">Modèle</label><input class="fld" id="am" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="claude-haiku-5-5"><button class="btn glassb" id="at">Tester la connexion</button><p class="sub">VERSION TEST : l’IA d’Emma passe par Claude via cette page, sans clé API. Tes messages sont envoyés à Claude pour générer les réponses.</p></div>`)
   +sec("Sécurité",`<span class="sub">Verrouillage de DANSHA</span>${hs("sgLock")}<span class="sub">Verrouillage automatique</span>${hs("sgAuto")}${S.lockHash?`<button class="btn ghost" id="cc">Changer le code</button>`:""}<p class="sub">Ce verrou protège l’accès à l’application sur cet appareil ; il ne chiffre pas vos données. La biométrie utilise WebAuthn (passkey) quand l’appareil le permet ; sinon le code est utilisé.</p>`)
   +sec("Autorisations",`<div class="row" style="padding:0"><b style="flex:1">Microphone</b><span class="sub" id="pm">${CAP.mic&&(SR||window.MediaRecorder)?(S.micAsk?"Demandé":"Non demandé"):"Non pris en charge"}</span></div><div class="row" style="padding:0"><b style="flex:1">Synthèse vocale</b><span class="sub">${CAP.tts?(voice?"Disponible":"Voix par défaut"):"Indisponible"}</span></div>`)
@@ -458,6 +462,7 @@ function drawMe(m){
   if($("#vn"))$("#vn").onchange=e=>{S.vname=e.target.value;save();pickVoice()};
   $("#vp").oninput=e=>{S.pitch=+e.target.value;save()};$("#vt").onclick=()=>speak("Hello, I’m Emma. Let’s practise English together.");
   $("#sl").onclick=()=>{S.silent=!S.silent;save();draw()};
+  m.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{S.bg="s"+b.dataset.s;save();toast("Fond enregistré. Il apparaît dans Parler.")});
   m.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{S.bg="g"+b.dataset.g;save();toast("Fond enregistré. Il apparaît dans Parler.")});
   $("#bp").onclick=async()=>{const d=await pickImage(1080,false);if(!d)return toast("Image non chargée.");await idb.set("emmaBg",d);S.bg="img";save();toast("Photo enregistrée sur cet appareil.")};
   $("#bx").onclick=()=>{S.bg="";save();toast("Fond retiré.")};
@@ -591,7 +596,7 @@ function drawTalk(m){
 async function say(list,ch){
   busy=true;chips([]);
   for(const[en,fr]of list){const t=document.createElement("div");t.className="b em2 ty";t.innerHTML="<i></i><i></i><i></i>";if(!$("#msgs"))break;$("#msgs").append(t);$("#main").scrollTop=1e5;
-    await wait(420+Math.min(en.length*16,700));t.remove();const c={w:"em",en,fr};chat.push(c);if($("#msgs"))bubble(c);if(!S.silent)speak(en);await wait(180)}
+    await wait(420+Math.min(en.length*16,700));t.remove();const c={w:"em",en,fr};chat.push(c);if($("#msgs"))bubble(c);if(!S.silent)await speak(en,true);await wait(S.silent?260:320)}
   busy=false;chat.cur=ch;if(tab==="talk")chips(ch);
 }
 function send(t){
@@ -648,8 +653,23 @@ const idb={db:null,mem:{},open(){return this.db||(this.db=new Promise((res,rej)=
   async set(k,v){this.mem[k]=v;try{const d=await this.open();await new Promise((res,rej)=>{const t=d.transaction("kv","readwrite");t.objectStore("kv").put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}catch(e){}},
   async get(k){try{const d=await this.open();return await new Promise((res,rej)=>{const q=d.transaction("kv").objectStore("kv").get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}catch(e){return this.mem[k]}}};
 function pickImage(max,square){return new Promise(res=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=()=>{const f=i.files[0];if(!f)return res(null);const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{let w=im.width,h=im.height,sx=0,sy=0,sw=w,sh=h;if(square){const m=Math.min(w,h);sx=(w-m)/2;sy=(h-m)/2;sw=sh=m;w=h=m}const k=Math.min(1,max/Math.max(w,h)),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",.82))};im.onerror=()=>res(null);im.src=u};i.click()})}
+const scSv=(d,b)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice"><defs>${b}</defs>${d}</svg>`;
+const scLg=(id,a,b,c)=>`<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/>${c?`<stop offset=".55" stop-color="${c}"/>`:""}<stop offset="1" stop-color="${b}"/></linearGradient>`;
+const scR=(()=>{let x=7;return()=>(x=(x*16807)%2147483647)/2147483647})();
+const scStars=n=>Array.from({length:n},()=>`<circle cx="${(scR()*400)|0}" cy="${(scR()*480)|0}" r="${(scR()*1.4+.3).toFixed(1)}" fill="#fff" opacity="${(scR()*.7+.3).toFixed(2)}"/>`).join("");
+const scPines=(y,c,n,h)=>Array.from({length:n},(_,i)=>{const x=(i*(420/(n-1))-10+((i*37)%17))|0,w=h*.42|0;return`<path d="M${x} ${y}l${-w} ${h}h${2*w}z" fill="${c}"/>`}).join("");
+const SC=[
+["Savane",scSv(`<rect width="400" height="800" fill="url(#a)"/><circle cx="200" cy="470" r="64" fill="#fff1c1"/><path d="M0 560q120-30 240-10t160-10V800H0z" fill="#3a2217"/><path d="M0 620q150-40 400 0V800H0z" fill="#1d110b"/><path d="M296 640q6-60-8-100m8 50q22-16 38-34" stroke="#0e0704" stroke-width="6" fill="none"/><ellipse cx="288" cy="520" rx="76" ry="15" fill="#0e0704"/>`,scLg("a","#1d2b64","#ffd27a","#f08a4b"))],
+["Montagnes",scSv(`<rect width="400" height="800" fill="url(#a)"/><circle cx="270" cy="330" r="38" fill="#fff4dc" opacity=".9"/><path d="M0 520l90-130 70 90 80-150 90 140 70-80v410H0z" fill="#7b86b8"/><path d="M0 600l110-120 90 100 90-110 110 130v200H0z" fill="#4a5890"/><path d="M0 700l130-90 120 80 150-70v280H0z" fill="#232d5a"/>`,scLg("a","#243b6b","#f6c1a6","#c58aa8"))],
+["Océan",scSv(`<rect width="400" height="800" fill="url(#a)"/><circle cx="200" cy="430" r="58" fill="#fff0c9"/><rect y="480" width="400" height="320" fill="url(#b)"/><path d="M120 500h160M150 530h100M90 570h220M140 620h120M60 680h280" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".28"/>`,scLg("a","#ff9a8b","#ffd9a8","#ffb88c")+scLg("b","#2a6f9e","#071f3a"))],
+["Nuit étoilée",scSv(`<rect width="400" height="800" fill="url(#a)"/>${scStars(80)}<circle cx="300" cy="150" r="30" fill="#f4f1de"/><circle cx="312" cy="142" r="28" fill="#0c1536"/><path d="M0 640q100-60 200-20t200-30V800H0z" fill="#070c20"/>`,scLg("a","#050a1c","#243a7a"))],
+["Forêt",scSv(`<rect width="400" height="800" fill="url(#a)"/>${scPines(470,"#6fb78d",9,190)}${scPines(560,"#3f8f68",8,200)}${scPines(660,"#1f5f48",7,230)}<rect y="780" width="400" height="20" fill="#143d30"/>`,scLg("a","#d6f1e0","#7fc8a0"))],
+["Aurore",scSv(`<rect width="400" height="800" fill="url(#a)"/>${scStars(50)}<g filter="url(#f)" opacity=".75"><path d="M-20 300q120-160 220-40t240-120v140q-120 100-240-20T-20 400z" fill="#37e8a8"/><path d="M-20 380q140-120 240-20t240-90v90q-120 70-240-10T-20 460z" fill="#7a5cff" opacity=".7"/></g><path d="M0 660q120-50 200-10t200-40V800H0z" fill="#dce8f5"/><path d="M0 730q150-40 400 0V800H0z" fill="#9fb4d0"/>`,scLg("a","#030818","#0e2a4a")+`<filter id="f"><feGaussianBlur stdDeviation="14"/></filter>`)],
+["Désert",scSv(`<rect width="400" height="800" fill="url(#a)"/><circle cx="110" cy="360" r="52" fill="#fff0c2"/><path d="M0 520q130-70 260 0t140-20v300H0z" fill="#e0904f"/><path d="M0 610q170-90 400 -10v200H0z" fill="#bd6a3b"/><path d="M0 710q200-70 400 0v90H0z" fill="#8f4a2c"/>`,scLg("a","#f6d59b","#ea9a5b"))]
+];
+const scUrl=i=>"data:image/svg+xml,"+encodeURIComponent(SC[i][1]).replace(/[()']/g,c=>"%"+c.charCodeAt(0).toString(16).toUpperCase());
 const GR=["linear-gradient(160deg,#0A7AFF,#5AC8FA)","linear-gradient(160deg,#1b1f3a,#3a2a6a)","linear-gradient(160deg,#ff9a8b,#ff6a88 55%,#ff99ac)","linear-gradient(160deg,#134e5e,#71b280)"];
-async function applyBg(){const e=$("#emb");let v="";if(S.bg==="img"){const d=await idb.get("emmaBg");v=d?`url(${d}) center/cover`:""}else if(/^g\d$/.test(S.bg||""))v=GR[+S.bg[1]]||"";e.style.background=v;const on=tab==="talk"&&!!v;e.style.display=on?"block":"none";$("#main").classList.toggle("hasbg",on)}
+async function applyBg(){const e=$("#emb");let v="";if(S.bg==="img"){const d=await idb.get("emmaBg");v=d?`url(${d}) center/cover`:""}else if(/^g\d$/.test(S.bg||""))v=GR[+S.bg[1]]||"";else if(/^s\d$/.test(S.bg||""))v=`url(${scUrl(+S.bg[1])}) center/cover no-repeat`;e.style.background=v;const on=tab==="talk"&&!!v;e.style.display=on?"block":"none";$("#main").classList.toggle("hasbg",on)}
 /* Liquid Glass segmented control: the capsule follows the finger, stretches with speed, then snaps with a spring */
 function seg(host,items,val,cb){
   host.innerHTML=`<div class="seg glass" role="radiogroup"><i class="knob"></i>${items.map((x,i)=>`<button role="radio" aria-checked="${x[0]===val}" data-i="${i}">${x[1]}</button>`).join("")}</div>`;
@@ -815,7 +835,44 @@ function pickUnused(list){
   MEM.asked.add(x[0]);
   return x;
 }
+const SMALL=[
+[/\b(your name|who are you|are you (a )?(robot|real|human|an? ai))/,[[["I’m Emma, your English coach. I’m not a real person, but I love practising with you.","Je suis Emma, ta coach d’anglais. Je ne suis pas une vraie personne, mais j’adore m’entraîner avec toi."]],[["My name is Emma! I live in this app, and I’m here to help you speak English.","Je m’appelle Emma ! J’habite dans cette appli et je suis là pour t’aider à parler anglais."]]],["Nice to meet you!","Can you help me?"]],
+[/\b(how are you|how's it going|how are things|how do you do)/,[[["I’m doing great, thank you!","Je vais très bien, merci !"],["How is your day going?","Comment se passe ta journée ?"]],[["Pretty good! I’m always happy when we practise.","Plutôt bien ! Je suis toujours contente quand on s’entraîne."]]],["It’s going well.","I’m a bit tired.","Not so good today."]],
+[/\b(thank|thanks|merci)/,[[["You’re welcome! You’re doing really well.","Avec plaisir ! Tu t’en sors très bien."]],[["Anytime! Keep going, you’re improving.","Quand tu veux ! Continue, tu progresses."]]],["Let’s continue.","Can we practise speaking?"]],
+[/\b(sorry|my bad|excuse me)\b/,[[["No problem at all! Mistakes help us learn.","Aucun souci ! Les erreurs nous aident à apprendre."]]],["Let’s try again.","Thank you, Emma."]],
+[/\b(what time|time is it)/,[()=>{const d=new Date(),h=d.getHours(),m=String(d.getMinutes()).padStart(2,"0");return[["It’s "+h+":"+m+" right now.","Il est "+h+"h"+m+" en ce moment."]]}],["Thank you!","What day is it?"]],
+[/\b(what day|today's date|what date|date today|which day)/,[()=>{const d=new Date();return[["Today is "+d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})+".","Nous sommes le "+d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+"."]]}],["Thank you!","What time is it?"]],
+[/\b(what can you do|can you help|help me|teach me|how does this work)/,[[["I can chat with you, explain new words, and help you speak with more confidence.","Je peux discuter avec toi, t’expliquer des mots nouveaux et t’aider à parler avec plus d’assurance."],["Just write, or speak, in English. I’ll help if you get stuck.","Écris ou parle simplement en anglais. Je t’aide si tu bloques."]]],["Let’s talk about my day.","Teach me new words."]],
+[/\b(i don't understand|i do not understand|i'm lost|i am lost|too fast|je ne comprends pas)/,[[["No worries! I’ll use simpler words. Take your time.","Pas de souci ! J’utiliserai des mots plus simples. Prends ton temps."]]],["Can you repeat?","Say it in French, please."]],
+[/\b(football|soccer|lions)\b/,[[["I love football! It’s great for learning English, with so many fun words.","J’adore le foot ! C’est génial pour apprendre l’anglais, il y a plein de mots amusants."],["Do you have a favourite team?","As-tu une équipe préférée ?"]]],["I support my national team.","I don’t like football."]],
+[/\b(food|hungry|dinner|lunch|breakfast|cook|eat)/,[[["Good food makes every day better!","Une bonne cuisine rend chaque jour meilleur !"],["What do you usually have for breakfast?","Que prends-tu d’habitude au petit-déjeuner ?"]]],["I usually have bread and tea.","I love rice and chicken."]],
+[/\b(music|song|sing|dance)/,[[["Music is a wonderful way to learn English. Songs stay in your head!","La musique est un super moyen d’apprendre l’anglais. Les chansons restent en tête !"]]],["I like Afrobeats.","I like gospel music."]],
+[/\b(weather|rain|sunny|so hot|so cold)/,[[["I can’t look outside, but I hope it’s a nice day for you!","Je ne peux pas regarder dehors, mais j’espère qu’il fait beau chez toi !"],["Is it sunny or rainy where you are?","Fait-il soleil ou pluie chez toi ?"]]],["It’s sunny today.","It’s raining."]],
+[/\b(joke|funny|make me laugh)/,[[["Why did the student eat his homework? Because the teacher said it was a piece of cake!","Pourquoi l’élève a-t-il mangé ses devoirs ? Parce que le prof a dit que c’était du gâteau !"]],[["What do you call a bear with no teeth? A gummy bear!","Comment appelle-t-on un ours sans dents ? Un ours en gélatine !"]]],["Ha ha, good one!","Tell me another joke."]],
+[/\bi('m| am| feel)? (so |very |a bit |really )?(bored|tired|sad|stressed|angry|nervous|worried)/,[[["I’m sorry you feel like that. Talking for a few minutes can help.","Je suis désolée que tu te sentes comme ça. Parler quelques minutes peut aider."],["Do you want to tell me about your day?","Veux-tu me raconter ta journée ?"]]],["Yes, let me explain.","I just need a break."]],
+[/\b(good job|well done|bravo|you're (great|good|smart|nice|amazing)|you are (great|good|smart|nice|amazing))/,[[["Thank you, that’s kind! You make it easy.","Merci, c’est gentil ! Avec toi, c’est facile."]]],["Let’s continue.","You’re a great coach."]],
+[/\bhow old are you/,[[["I’m a young app, but I never get tired of talking!","Je suis une jeune appli, mais je ne me fatigue jamais de parler !"]]],["How old do you think I am?","Let’s talk about me."]],
+[/\bwhere (are you from|do you live)/,[[["I live in your phone, so I’m always with you!","J’habite dans ton téléphone, donc je suis toujours avec toi !"],["And you? Where do you live?","Et toi ? Où habites-tu ?"]]],["I live in a big city.","I live in a small town."]],
+[/\b(school|exam|homework|teacher|class|study|studying)\b/,[[["School can be hard, but a little English every day makes a big difference.","L’école peut être difficile, mais un peu d’anglais chaque jour fait une grande différence."],["Which subject do you like most?","Quelle matière préfères-tu ?"]]],["I like maths.","I like English!"]],
+[/\b(hobby|hobbies|free time|weekend|for fun)/,[[["Free time is the best time! I enjoy chatting and learning new words.","Le temps libre, c’est le meilleur moment ! J’aime discuter et apprendre des mots nouveaux."],["What do you like doing at the weekend?","Qu’aimes-tu faire le week-end ?"]]],["I like to watch films.","I like to play sports."]]
+];
+function smallTalk(t){
+  const q=t.toLowerCase().replace(/[’`]/g,"'");MEM.used=MEM.used||[];
+  if(/\b(repeat|say (that|it) again|once more|pardon|in french|en fran[cç]ais)\b/.test(q)){
+    const e=[...chat].reverse().find(c=>c.w==="em");
+    if(e){MEM.turn++;MEM.recent.push(t);return/french|fran/.test(q)?{lines:[["Of course! Here it is in French.",e.fr||e.en]],ch:["Thanks!","Let’s continue."]}:{lines:[[e.en,e.fr||""]],ch:["I understand.","Slower, please."]}}
+  }
+  for(let ri=0;ri<SMALL.length;ri++){const[re,vs,ch]=SMALL[ri];if(!re.test(q))continue;
+    const order=vs.map((_,i)=>i).sort(()=>Math.random()-.5);
+    let vi=order.find(i=>!MEM.used.includes(ri+":"+i));if(vi===undefined){MEM.used=MEM.used.filter(k=>!k.startsWith(ri+":"));vi=order[0]}
+    MEM.used.push(ri+":"+vi);MEM.turn++;MEM.recent.push(t);if(MEM.recent.length>8)MEM.recent.shift();
+    const v=vs[vi];return{lines:typeof v==="function"?v():v,ch}}
+  return null}
 function free(t){
+  const r=smallTalk(t)||free0(t);MEM.said=MEM.said||[];
+  if(r&&r.lines){const k=r.lines.filter(l=>!(/\?\s*$/.test(l[0])&&MEM.said.includes(l[0])));if(k.length)r.lines=k;r.lines.forEach(l=>MEM.said.push(l[0]));if(MEM.said.length>60)MEM.said.splice(0,30)}
+  return r}
+function free0(t){
   MEM.turn++;
   MEM.recent.push(t);if(MEM.recent.length>8)MEM.recent.shift();
   extractFacts(t);
